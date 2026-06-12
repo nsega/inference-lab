@@ -26,20 +26,27 @@ RPS_PERIOD_S = float(os.environ.get("RPS_PERIOD_S", "300"))
 PREFIX_SHARE = float(os.environ.get("PREFIX_SHARE", "0.7"))
 REPORT_EVERY_S = 30
 
-# A long shared system prompt; identical bytes on ~70% of requests so the
-# prefix cache has something to hit.
-SHARED_SYSTEM = (
-    "You are RouteCause Lab Assistant, a careful and precise AI system that "
-    "answers questions about distributed inference infrastructure. Always "
-    "follow these standing instructions: (1) be concise, (2) cite which "
-    "backend served you if known, (3) never fabricate metrics, (4) prefer "
-    "structured answers with short bullet points, (5) if the question is "
-    "ambiguous ask one clarifying question, (6) treat all latency numbers "
-    "as milliseconds unless stated otherwise, (7) assume the cluster runs "
-    "Kubernetes with an Envoy-fronted endpoint picker, (8) keep a neutral "
-    "tone, (9) do not speculate about hardware you cannot observe, and "
-    "(10) end every answer with a one-line summary. " * 3
+# Long shared system prompts, one per "tenant". ~70% of requests reuse one of
+# these verbatim (popularity is Zipf-skewed). The combined working set of all
+# tenants exceeds a single backend's KV cache, so the prefix-cache hit rate
+# depends on prefix-aware routing keeping each tenant on its home backend —
+# which is exactly what the lab needs to make routing faults observable.
+N_TENANTS = int(os.environ.get("N_TENANTS", "12"))
+_BASE_SYSTEM = (
+    "You are RouteCause Lab Assistant for tenant {t}, a careful and precise "
+    "AI system that answers questions about distributed inference "
+    "infrastructure. Always follow these standing instructions: (1) be "
+    "concise, (2) cite which backend served you if known, (3) never "
+    "fabricate metrics, (4) prefer structured answers with short bullet "
+    "points, (5) if the question is ambiguous ask one clarifying question, "
+    "(6) treat all latency numbers as milliseconds unless stated otherwise, "
+    "(7) assume the cluster runs Kubernetes with an Envoy-fronted endpoint "
+    "picker, (8) keep a neutral tone, (9) do not speculate about hardware "
+    "you cannot observe, and (10) end every answer with a one-line summary. "
 )
+TENANT_SYSTEMS = [_BASE_SYSTEM.format(t=t) * 6 for t in range(N_TENANTS)]
+# Zipf-ish popularity: tenant 0 most popular
+TENANT_WEIGHTS = [1.0 / (k + 1) for k in range(N_TENANTS)]
 
 WORDS = (
     "latency throughput queue cache prefix tokens routing envoy scheduler "
@@ -58,9 +65,10 @@ stats = {"ok": 0, "err": 0, "lat_sum": 0.0}
 
 def one_request() -> None:
     shared = random.random() < PREFIX_SHARE
-    system = SHARED_SYSTEM if shared else (
-        f"You are assistant #{random.randrange(10**9)}. " + rand_text(60)
-    )
+    if shared:
+        system = random.choices(TENANT_SYSTEMS, weights=TENANT_WEIGHTS, k=1)[0]
+    else:
+        system = f"You are assistant #{random.randrange(10**9)}. " + rand_text(60)
     n_words = random.choice((8, 8, 30, 30, 30, 90, 200))
     body = json.dumps({
         "model": MODEL,

@@ -13,10 +13,9 @@ spec:
             - --mode=echo
             - --force-dummy-tokenizer
             - --enable-kvcache
-            - --kv-cache-size=1024
+            - --kv-cache-size=256
             - --max-num-seqs=4
-            - --time-to-first-token=1500ms
-            - --time-to-first-token-std-dev=300ms
+            - --prefill-time-per-token=10ms
             - --inter-token-latency=40ms
             - --inter-token-latency-std-dev=8ms
             - --max-model-len=4096

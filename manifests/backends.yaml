@@ -27,10 +27,9 @@ spec:
             - --mode=echo
             - --force-dummy-tokenizer
             - --enable-kvcache
-            - --kv-cache-size=1024
+            - --kv-cache-size=256
             - --max-num-seqs=4
-            - --time-to-first-token=150ms
-            - --time-to-first-token-std-dev=30ms
+            - --prefill-time-per-token=2ms
             - --inter-token-latency=10ms
             - --inter-token-latency-std-dev=2ms
             - --max-model-len=4096
@@ -68,10 +67,9 @@ spec:
             - --mode=echo
             - --force-dummy-tokenizer
             - --enable-kvcache
-            - --kv-cache-size=1024
+            - --kv-cache-size=256
             - --max-num-seqs=4
-            - --time-to-first-token=150ms
-            - --time-to-first-token-std-dev=30ms
+            - --prefill-time-per-token=2ms
             - --inter-token-latency=10ms
             - --inter-token-latency-std-dev=2ms
             - --max-model-len=4096
@@ -109,10 +107,9 @@ spec:
             - --mode=echo
             - --force-dummy-tokenizer
             - --enable-kvcache
-            - --kv-cache-size=1024
+            - --kv-cache-size=256
             - --max-num-seqs=4
-            - --time-to-first-token=150ms
-            - --time-to-first-token-std-dev=30ms
+            - --prefill-time-per-token=2ms
             - --inter-token-latency=10ms
             - --inter-token-latency-std-dev=2ms
             - --max-model-len=4096

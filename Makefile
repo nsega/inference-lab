@@ -51,6 +51,7 @@ load:
 	$(KCTL) create configmap loadgen-script --from-file=load/loadgen.py \
 		--dry-run=client -o yaml | $(KCTL) apply -f -
 	$(KCTL) apply -f manifests/loadgen.yaml
+	$(KCTL) rollout restart deploy/loadgen
 	$(KCTL) wait --for=condition=available --timeout=120s deploy/loadgen
 	@echo "load running; tail with: kubectl -n $(NS) logs -f deploy/loadgen"
 

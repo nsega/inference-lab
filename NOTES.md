@@ -60,6 +60,58 @@ served by all three backends (19/14/9 split; EPP is score-based, not strict
 round-robin — spreading across all backends is the expected healthy behavior).
 EPP pod 2/2 Running, 0 restarts (covers the GATE 1 60s-uptime deferral).
 
+## GATE 3/4 — Metrics + load
+
+All four required series exist with real data while the in-cluster loadgen runs
+(~5–15 rps sine wave, 70% shared prefix). Healthy baseline (2m windows):
+
+- `vllm:num_requests_waiting` per backend: ~0
+- `vllm:kv_cache_usage_perc`: 0.04–0.06
+- prefix hit rate `sum(rate(vllm:prefix_cache_hits[2m]))/sum(rate(vllm:prefix_cache_queries[2m]))`: ~0.78
+- P95 e2e `histogram_quantile(0.95, sum by (le) (rate(vllm:e2e_request_latency_seconds_bucket[2m])))`: ~2.3–2.4 s
+- P95 TTFT: ~0.24 s
+
+Decision: loadgen runs **in-cluster** (ConfigMap-mounted stdlib python) rather
+than on the host — no port-forward to die during hours-long runs.
+
+## GATE 5 — Fault drills (observed)
+
+**S1** (queue/kv scorer weights → 0): within 2.5 min queue depth pinned to ONE
+backend (49 vs 0/0), P95 e2e 2.4 s → 14.7 s, prefix hit rate UNCHANGED (~0.78).
+Reset → baseline within 2.5 min. Note: `weight: 0` is accepted by the v1.5.0
+config loader — no need for the "invert" variant.
+
+**S2** (backend-2: TTFT 150ms→1500ms, ITL 10→40ms, 25% server_error, health
+endpoint still 200): within 2.5 min P95 TTFT 0.24 s → 1.83 s, loadgen shows
+~3–4% errors, b2 success rate 0.79 rps vs ~3 rps peers. Queues ~0 and hit rate
+unchanged → cleanly distinguishable from S1/S3. EPP keeps b2 in rotation
+(readiness passes), exactly the intended "unhealthy endpoint in rotation".
+
+## GATE 5 — S3 tuning (two failures before symptom appeared)
+
+**Failure 4:** with a SINGLE shared system prompt and `--kv-cache-size=1024`,
+removing the prefix scorer produced NO drop in hit rate (0.78 before and
+after). Cause: utilization ~5% → LRU never evicts; all three backends keep the
+shared prefix permanently cached, so routing doesn't matter.
+
+**Failure 5:** shrinking the cache to 256 blocks alone didn't help either —
+the single prefix gets re-requested on every backend faster than anything can
+evict it (utilization 10–20%).
+
+**Rule:** for prefix-aware routing to be observable, the workload's prefix
+working set must exceed ONE backend's KV cache while a routed subset fits.
+Implemented: 12 "tenant" system prompts (~660 tokens each ≈ 41 blocks; 12 × 41
+≈ 500 blocks pool-wide vs 256 per backend), Zipf-skewed popularity, 70% of
+traffic. With routing each backend homes a few tenants (fits); without it
+every backend sees all tenants → LRU churn → hit rate 0.69 → 0.45 within
+2.5 min, kv-cache usage up on all backends, queues unchanged.
+
+**Rule (latency model):** the sim's fixed `--time-to-first-token` cannot show
+cache effects; `--prefill-time-per-token` DOES skip prefill for cached prefix
+blocks (verified locally: identical 600-token prompt, 6.7 s cold vs 3.8 s
+warm). Backends use `--prefill-time-per-token=2ms` so S3's hit-rate collapse
+also degrades TTFT/e2e latency, as the brief expects.
+
 ## GATE 7 — Tunnel rehearsal (done early, independent of the cluster)
 
 - `cloudflared tunnel --url http://localhost:<port>` produces a quick tunnel URL
