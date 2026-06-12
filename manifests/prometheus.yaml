@@ -1,0 +1,111 @@
+# Plain Prometheus deployment (no Grafana, no operator).
+# Scrapes: vllm-sim backend pods (:8000/metrics) and the EPP (:9090/metrics).
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: prometheus
+  namespace: inference-lab
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: prometheus-inference-lab
+rules:
+  - apiGroups: [""]
+    resources: [pods, services, endpoints]
+    verbs: [get, list, watch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: prometheus-inference-lab
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: prometheus-inference-lab
+subjects:
+  - kind: ServiceAccount
+    name: prometheus
+    namespace: inference-lab
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  namespace: inference-lab
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 5s
+      evaluation_interval: 5s
+    scrape_configs:
+      - job_name: vllm-backends
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces: {names: [inference-lab]}
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_label_app]
+            regex: vllm-sim
+            action: keep
+          - source_labels: [__meta_kubernetes_pod_container_port_number]
+            regex: "8000"
+            action: keep
+          - source_labels: [__meta_kubernetes_pod_label_backend]
+            target_label: backend
+          - source_labels: [__meta_kubernetes_pod_name]
+            target_label: pod
+      - job_name: epp
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces: {names: [inference-lab]}
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_label_app]
+            regex: epp
+            action: keep
+          - source_labels: [__meta_kubernetes_pod_container_port_number]
+            regex: "9090"
+            action: keep
+          - source_labels: [__meta_kubernetes_pod_name]
+            target_label: pod
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus
+  namespace: inference-lab
+  labels: {app: prometheus}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: prometheus}
+  template:
+    metadata:
+      labels: {app: prometheus}
+    spec:
+      serviceAccountName: prometheus
+      containers:
+        - name: prometheus
+          image: prom/prometheus:v3.4.1
+          imagePullPolicy: IfNotPresent
+          args:
+            - --config.file=/etc/prometheus/prometheus.yml
+            - --storage.tsdb.retention.time=6h
+          ports:
+            - {containerPort: 9090, name: http}
+          volumeMounts:
+            - {name: config, mountPath: /etc/prometheus}
+      volumes:
+        - name: config
+          configMap: {name: prometheus-config}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus
+  namespace: inference-lab
+spec:
+  type: NodePort
+  selector: {app: prometheus}
+  ports:
+    - {port: 9090, targetPort: 9090, nodePort: 30090}
