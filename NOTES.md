@@ -144,6 +144,15 @@ healthy baseline: queues ~0, hit rate ~0.72, P95 e2e ~8.1 s, P95 TTFT ~1.9 s:
   trycloudflare URL (HTTP 200 via Cloudflare edge). Phone-on-cellular spot check
   still worth doing manually before Build Day, but public reachability is proven.
 
+## GATE 6 — Repeatability
+
+Full hands-off cycle `make down && make up && make load && make inject
+FAULT=s1 && make reset && make down` passed end-to-end (exit 0, every
+`kubectl wait` condition met). All five images are pre-pulled to the host
+docker cache by `make pull-images` (a dependency of `up`), so Build Day needs
+no large downloads. Targets are idempotent: `create configmap … --dry-run -o
+yaml | apply`, `kind get clusters | grep || create`, `apply` everywhere.
+
 ## kind image loading on Docker containerd store
 
 **Failure:** `kind load docker-image` fails with
