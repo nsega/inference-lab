@@ -1,0 +1,262 @@
+# llm-d Router (GIE EPP) + self-managed Envoy sidecar in one pod.
+# No Gateway implementation: Envoy calls EPP over ext_proc, EPP picks the
+# backend and returns it in the x-gateway-destination-endpoint header,
+# consumed by an ORIGINAL_DST cluster.
+#
+# Pod discovery uses InferencePool CRD mode. Selector standalone mode
+# (--endpoint-selector) is broken in GIE v1.5.0 (the version inside
+# llm-d-inference-scheduler v0.8.0): setupDatastore receives the empty
+# --pool-name instead of the POD_NAME-derived name and exits with
+# "name must not be empty". Fixed upstream on main, not in any release.
+---
+apiVersion: inference.networking.k8s.io/v1
+kind: InferencePool
+metadata:
+  name: vllm-sim-pool
+  namespace: inference-lab
+spec:
+  selector:
+    matchLabels: {app: vllm-sim}
+  targetPorts:
+    - number: 8000
+  endpointPickerRef:
+    name: epp
+    kind: Service
+    port: {number: 9002}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: epp
+  namespace: inference-lab
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: epp
+  namespace: inference-lab
+rules:
+  - apiGroups: [""]
+    resources: [pods]
+    verbs: [get, list, watch]
+  - apiGroups: [inference.networking.k8s.io]
+    resources: [inferencepools]
+    verbs: [get, list, watch]
+  - apiGroups: [inference.networking.x-k8s.io]
+    resources: [inferencepools, inferenceobjectives, inferencemodelrewrites]
+    verbs: [get, list, watch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: epp
+  namespace: inference-lab
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: epp
+subjects:
+  - kind: ServiceAccount
+    name: epp
+    namespace: inference-lab
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: envoy-config
+  namespace: inference-lab
+data:
+  envoy.yaml: |
+    admin:
+      address:
+        socket_address: { address: 127.0.0.1, port_value: 19000 }
+    static_resources:
+      listeners:
+        - name: http
+          address:
+            socket_address: { address: 0.0.0.0, port_value: 8081 }
+          filter_chains:
+            - filters:
+                - name: envoy.filters.network.http_connection_manager
+                  typed_config:
+                    "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+                    stat_prefix: http-8081
+                    route_config:
+                      name: vllm
+                      virtual_hosts:
+                        - name: vllm-default
+                          domains: ["*"]
+                          routes:
+                            - match: { prefix: "/" }
+                              route:
+                                cluster: original_destination_cluster
+                                timeout: 86400s
+                                idle_timeout: 86400s
+                              typed_per_filter_config:
+                                envoy.filters.http.ext_proc:
+                                  "@type": type.googleapis.com/envoy.config.route.v3.FilterConfig
+                                  config: {}
+                    http_filters:
+                      - name: envoy.filters.http.ext_proc
+                        typed_config:
+                          "@type": type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor
+                          grpc_service:
+                            envoy_grpc:
+                              cluster_name: ext_proc
+                            timeout: 10s
+                          processing_mode:
+                            request_header_mode: SEND
+                            response_header_mode: SEND
+                            request_body_mode: FULL_DUPLEX_STREAMED
+                            response_body_mode: FULL_DUPLEX_STREAMED
+                            request_trailer_mode: SEND
+                            response_trailer_mode: SEND
+                          message_timeout: 1000s
+                      - name: envoy.filters.http.router
+                        typed_config:
+                          "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+                          suppress_envoy_headers: true
+        - name: ready
+          address:
+            socket_address: { address: 0.0.0.0, port_value: 19001 }
+          filter_chains:
+            - filters:
+                - name: envoy.filters.network.http_connection_manager
+                  typed_config:
+                    "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+                    stat_prefix: ready
+                    route_config:
+                      name: ready
+                      virtual_hosts:
+                        - name: ready
+                          domains: ["*"]
+                          routes:
+                            - match: { prefix: "/ready" }
+                              direct_response: { status: 200, body: { inline_string: "ok" } }
+                    http_filters:
+                      - name: envoy.filters.http.router
+                        typed_config:
+                          "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+      clusters:
+        - name: original_destination_cluster
+          type: ORIGINAL_DST
+          connect_timeout: 1000s
+          lb_policy: CLUSTER_PROVIDED
+          original_dst_lb_config:
+            use_http_header: true
+            http_header_name: x-gateway-destination-endpoint
+          circuit_breakers:
+            thresholds:
+              - max_connections: 40000
+                max_pending_requests: 40000
+                max_requests: 40000
+        - name: ext_proc
+          type: STATIC
+          connect_timeout: 86400s
+          lb_policy: LEAST_REQUEST
+          health_checks:
+            - timeout: 2s
+              interval: 10s
+              unhealthy_threshold: 3
+              healthy_threshold: 2
+              reuse_connection: true
+              grpc_health_check:
+                service_name: "envoy.service.ext_proc.v3.ExternalProcessor"
+          typed_extension_protocol_options:
+            envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
+              "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
+              explicit_http_config:
+                http2_protocol_options: {}
+          load_assignment:
+            cluster_name: ext_proc
+            endpoints:
+              - lb_endpoints:
+                  - endpoint:
+                      address:
+                        socket_address: { address: 127.0.0.1, port_value: 9002 }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: epp
+  namespace: inference-lab
+  labels: {app: epp}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: epp}
+  template:
+    metadata:
+      labels: {app: epp}
+    spec:
+      serviceAccountName: epp
+      containers:
+        - name: epp
+          image: ghcr.io/llm-d/llm-d-inference-scheduler:v0.8.0
+          imagePullPolicy: IfNotPresent
+          args:
+            - --pool-name=vllm-sim-pool
+            - --pool-namespace=inference-lab
+            - --grpc-port=9002
+            - --grpc-health-port=9003
+            - --metrics-port=9090
+            - --secure-serving=false
+            - --metrics-endpoint-auth=false
+            - --config-file=/etc/epp/config.yaml
+            - --zap-encoder=json
+            - --v=3
+          env:
+            # standalone selector mode derives the owning Deployment from POD_NAME
+            - name: POD_NAME
+              valueFrom: {fieldRef: {fieldPath: metadata.name}}
+            - name: NAMESPACE
+              valueFrom: {fieldRef: {fieldPath: metadata.namespace}}
+          ports:
+            - {containerPort: 9002, name: ext-proc}
+            - {containerPort: 9003, name: grpc-health}
+            - {containerPort: 9090, name: metrics}
+          readinessProbe:
+            grpc: {port: 9003, service: envoy.service.ext_proc.v3.ExternalProcessor}
+            periodSeconds: 2
+          volumeMounts:
+            - {name: epp-config, mountPath: /etc/epp}
+        - name: envoy
+          image: envoyproxy/envoy:distroless-v1.33.2
+          imagePullPolicy: IfNotPresent
+          args: [--config-path, /etc/envoy/envoy.yaml]
+          ports:
+            - {containerPort: 8081, name: http}
+            - {containerPort: 19001, name: ready}
+          readinessProbe:
+            httpGet: {path: /ready, port: 19001}
+            periodSeconds: 2
+          volumeMounts:
+            - {name: envoy-config, mountPath: /etc/envoy}
+      volumes:
+        - name: epp-config
+          configMap: {name: epp-config}
+        - name: envoy-config
+          configMap: {name: envoy-config}
+---
+# Referenced by InferencePool.spec.endpointPickerRef
+apiVersion: v1
+kind: Service
+metadata:
+  name: epp
+  namespace: inference-lab
+spec:
+  selector: {app: epp}
+  ports:
+    - {name: ext-proc, port: 9002, targetPort: 9002}
+    - {name: metrics, port: 9090, targetPort: 9090}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gateway
+  namespace: inference-lab
+spec:
+  type: NodePort
+  selector: {app: epp}
+  ports:
+    - {name: http, port: 80, targetPort: 8081, nodePort: 30080}

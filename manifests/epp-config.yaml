@@ -1,0 +1,38 @@
+# HEALTHY EPP scheduler configuration (EndpointPickerConfig).
+# Loaded into the `epp-config` ConfigMap by `make up` / `make reset`.
+#
+# NOTE (GIE v1.5.0): the dataLayer section is REQUIRED. Without it the loader
+# logs "No data sources configured; metrics collection is disabled" and the
+# queue / kv-cache scorers silently score every endpoint as zero.
+apiVersion: inference.networking.x-k8s.io/v1alpha1
+kind: EndpointPickerConfig
+plugins:
+  - type: queue-scorer
+  - type: kv-cache-utilization-scorer
+  - type: prefix-cache-scorer
+    parameters:
+      maxPrefixBlocksToMatch: 256
+      lruCapacityPerServer: 31250
+  - type: max-score-picker
+  - type: single-profile-handler
+  - type: metrics-data-source
+    parameters:
+      scheme: "http"
+      path: "/metrics"
+      insecureSkipVerify: true
+  - type: core-metrics-extractor
+schedulingProfiles:
+  - name: default
+    plugins:
+      - pluginRef: queue-scorer
+        weight: 2
+      - pluginRef: kv-cache-utilization-scorer
+        weight: 2
+      - pluginRef: prefix-cache-scorer
+        weight: 3
+      - pluginRef: max-score-picker
+dataLayer:
+  sources:
+    - pluginRef: metrics-data-source
+      extractors:
+        - pluginRef: core-metrics-extractor
