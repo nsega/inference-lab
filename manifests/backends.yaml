@@ -28,10 +28,10 @@ spec:
             - --force-dummy-tokenizer
             - --enable-kvcache
             - --kv-cache-size=256
-            - --max-num-seqs=4
+            - --max-num-seqs=8
             - --prefill-time-per-token=2ms
-            - --inter-token-latency=10ms
-            - --inter-token-latency-std-dev=2ms
+            - --inter-token-latency=25ms
+            - --inter-token-latency-std-dev=5ms
             - --max-model-len=4096
             - --seed=100
           env:
@@ -68,10 +68,10 @@ spec:
             - --force-dummy-tokenizer
             - --enable-kvcache
             - --kv-cache-size=256
-            - --max-num-seqs=4
+            - --max-num-seqs=8
             - --prefill-time-per-token=2ms
-            - --inter-token-latency=10ms
-            - --inter-token-latency-std-dev=2ms
+            - --inter-token-latency=25ms
+            - --inter-token-latency-std-dev=5ms
             - --max-model-len=4096
             - --seed=101
           env:
@@ -108,10 +108,10 @@ spec:
             - --force-dummy-tokenizer
             - --enable-kvcache
             - --kv-cache-size=256
-            - --max-num-seqs=4
+            - --max-num-seqs=8
             - --prefill-time-per-token=2ms
-            - --inter-token-latency=10ms
-            - --inter-token-latency-std-dev=2ms
+            - --inter-token-latency=25ms
+            - --inter-token-latency-std-dev=5ms
             - --max-model-len=4096
             - --seed=102
           env:

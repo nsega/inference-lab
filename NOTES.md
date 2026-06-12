@@ -112,6 +112,30 @@ blocks (verified locally: identical 600-token prompt, 6.7 s cold vs 3.8 s
 warm). Backends use `--prefill-time-per-token=2ms` so S3's hit-rate collapse
 also degrades TTFT/e2e latency, as the brief expects.
 
+## GATE 5 — final tuning + verified drill results
+
+**Failure 6:** with `prefill-time-per-token=2ms` the baseline itself saturated
+(queues 25–31 everywhere) at `--max-num-seqs=4`. Raised to 8 seats → healthy
+queues back to 0. **Rule:** when changing the latency model, re-derive
+capacity: seats ≥ peak_rps_per_backend × mean_service_seconds with headroom.
+
+**Failure 7:** S1 as "weights → 0" did not pile up queues under the 12-tenant
+workload (prefix affinity spreads tenants across backends; the hot backend
+stayed under 8 seats because hits are fast). Switched S1 to the brief's
+"invert" variant: `queue-scorer weight: -2` (negative weights are accepted by
+the v1.5.0 loader). Positive feedback then drags 100% of traffic onto one
+backend.
+
+Final drill results (inject → symptom < 3 min → reset → recovery < 3 min),
+healthy baseline: queues ~0, hit rate ~0.72, P95 e2e ~8.1 s, P95 TTFT ~1.9 s:
+
+- **S1:** queue 88 on one backend, others 0.00 rps; P95 e2e 19.7 s (SLO 16 s
+  breached); hit rate unchanged.
+- **S2:** ~10% loadgen errors; degraded backend success rate lowest of pool;
+  pool P95 e2e 14.7 s; queues ~0; hit rate unchanged. Backend stays Ready.
+- **S3:** hit rate 0.72 → 0.48; kv churn on all backends; queues balanced ~0;
+  no error spike. Three mutually distinguishable signatures.
+
 ## GATE 7 — Tunnel rehearsal (done early, independent of the cluster)
 
 - `cloudflared tunnel --url http://localhost:<port>` produces a quick tunnel URL

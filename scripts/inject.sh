@@ -26,7 +26,7 @@ case "$FAULT" in
       --from-file=config.yaml="$ROOT/faults/s1-epp-config.yaml" \
       --dry-run=client -o yaml | $KCTL apply -f -
     restart_epp
-    write_state s1 "scorer-weight misconfig: load-aware scorers zeroed in EPP scheduler config"
+    write_state s1 "scorer-weight misconfig: queue-depth scorer weight inverted (negative) in EPP scheduler config"
     ;;
   s2)
     $KCTL patch deploy backend-2 --type strategic \

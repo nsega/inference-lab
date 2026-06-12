@@ -14,7 +14,7 @@ spec:
             - --force-dummy-tokenizer
             - --enable-kvcache
             - --kv-cache-size=256
-            - --max-num-seqs=4
+            - --max-num-seqs=8
             - --prefill-time-per-token=10ms
             - --inter-token-latency=40ms
             - --inter-token-latency-std-dev=8ms

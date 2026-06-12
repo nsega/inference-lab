@@ -1,7 +1,7 @@
 # FAULT S1 — scorer-weight misconfig.
-# Load-aware scorers (queue depth, kv-cache utilization) are zeroed out, so
-# the prefix-cache scorer is the only signal left: the ~70% of traffic sharing
-# a system prompt all lands on a single backend regardless of its load.
+# The queue-depth scorer weight is INVERTED (negative) and the kv-cache scorer
+# zeroed: the scheduler now prefers the most-loaded backend, a positive
+# feedback loop that piles the queue onto one backend while the others idle.
 apiVersion: inference.networking.x-k8s.io/v1alpha1
 kind: EndpointPickerConfig
 plugins:
@@ -23,7 +23,7 @@ schedulingProfiles:
   - name: default
     plugins:
       - pluginRef: queue-scorer
-        weight: 0
+        weight: -2
       - pluginRef: kv-cache-utilization-scorer
         weight: 0
       - pluginRef: prefix-cache-scorer
