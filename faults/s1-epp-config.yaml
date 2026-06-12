@@ -1,0 +1,36 @@
+# FAULT S1 — scorer-weight misconfig.
+# Load-aware scorers (queue depth, kv-cache utilization) are zeroed out, so
+# the prefix-cache scorer is the only signal left: the ~70% of traffic sharing
+# a system prompt all lands on a single backend regardless of its load.
+apiVersion: inference.networking.x-k8s.io/v1alpha1
+kind: EndpointPickerConfig
+plugins:
+  - type: queue-scorer
+  - type: kv-cache-utilization-scorer
+  - type: prefix-cache-scorer
+    parameters:
+      maxPrefixBlocksToMatch: 256
+      lruCapacityPerServer: 31250
+  - type: max-score-picker
+  - type: single-profile-handler
+  - type: metrics-data-source
+    parameters:
+      scheme: "http"
+      path: "/metrics"
+      insecureSkipVerify: true
+  - type: core-metrics-extractor
+schedulingProfiles:
+  - name: default
+    plugins:
+      - pluginRef: queue-scorer
+        weight: 0
+      - pluginRef: kv-cache-utilization-scorer
+        weight: 0
+      - pluginRef: prefix-cache-scorer
+        weight: 3
+      - pluginRef: max-score-picker
+dataLayer:
+  sources:
+    - pluginRef: metrics-data-source
+      extractors:
+        - pluginRef: core-metrics-extractor

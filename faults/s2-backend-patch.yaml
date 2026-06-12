@@ -1,0 +1,25 @@
+# FAULT S2 — unhealthy endpoint in rotation.
+# backend-2 becomes slow (10x TTFT, 4x inter-token latency) and returns
+# server errors on ~25% of requests, while /health keeps returning 200 so it
+# stays in the pool. Strategic-merge patch applied to deploy/backend-2.
+spec:
+  template:
+    spec:
+      containers:
+        - name: sim
+          args:
+            - --port=8000
+            - --model=meta-llama/Llama-3.1-8B-Instruct
+            - --mode=echo
+            - --force-dummy-tokenizer
+            - --enable-kvcache
+            - --kv-cache-size=1024
+            - --max-num-seqs=4
+            - --time-to-first-token=1500ms
+            - --time-to-first-token-std-dev=300ms
+            - --inter-token-latency=40ms
+            - --inter-token-latency-std-dev=8ms
+            - --max-model-len=4096
+            - --seed=102
+            - --failure-injection-rate=25
+            - --failure-types=server_error

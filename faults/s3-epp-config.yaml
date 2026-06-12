@@ -1,0 +1,30 @@
+# FAULT S3 — prefix-cache routing disabled.
+# The prefix-cache-aware scorer is removed from the scheduling profile, so
+# requests sharing a system prompt are spread by load alone and the
+# backend prefix-cache hit rate collapses; TTFT degrades under the same load.
+apiVersion: inference.networking.x-k8s.io/v1alpha1
+kind: EndpointPickerConfig
+plugins:
+  - type: queue-scorer
+  - type: kv-cache-utilization-scorer
+  - type: max-score-picker
+  - type: single-profile-handler
+  - type: metrics-data-source
+    parameters:
+      scheme: "http"
+      path: "/metrics"
+      insecureSkipVerify: true
+  - type: core-metrics-extractor
+schedulingProfiles:
+  - name: default
+    plugins:
+      - pluginRef: queue-scorer
+        weight: 2
+      - pluginRef: kv-cache-utilization-scorer
+        weight: 2
+      - pluginRef: max-score-picker
+dataLayer:
+  sources:
+    - pluginRef: metrics-data-source
+      extractors:
+        - pluginRef: core-metrics-extractor
