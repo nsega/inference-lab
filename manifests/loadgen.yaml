@@ -1,0 +1,32 @@
+# Load generator runs in-cluster so it survives for hours without relying on
+# a host port-forward. The script is injected via ConfigMap (see Makefile:
+# `kubectl create configmap loadgen-script --from-file=load/loadgen.py`).
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: loadgen
+  namespace: inference-lab
+  labels: {app: loadgen}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: loadgen}
+  template:
+    metadata:
+      labels: {app: loadgen}
+    spec:
+      containers:
+        - name: loadgen
+          image: python:3.12-alpine
+          imagePullPolicy: IfNotPresent
+          command: [python, /app/loadgen.py]
+          env:
+            - {name: TARGET, value: "http://gateway.inference-lab.svc:80"}
+            - {name: LOW_RPS, value: "5"}
+            - {name: HIGH_RPS, value: "15"}
+          volumeMounts:
+            - {name: script, mountPath: /app}
+      volumes:
+        - name: script
+          configMap: {name: loadgen-script}
