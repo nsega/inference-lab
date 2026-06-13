@@ -76,4 +76,6 @@ smoke:
 
 status:
 	@$(KCTL) get pods -o wide
-	@echo "--- fault state:"; cat lab/state/fault.json 2>/dev/null || echo "(healthy — no fault injected)"
+	@# Never cat fault.json — its description is the ground-truth answer key and must
+	@# not leak into a builder session log. Report only presence, not the label/cause.
+	@echo "--- fault state:"; test -f lab/state/fault.json && echo "(fault injected — see verifier ground truth)" || echo "(healthy — no fault injected)"

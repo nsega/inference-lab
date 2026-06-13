@@ -13,6 +13,10 @@ write_state() {
   cat > "$ROOT/lab/state/fault.json" <<EOF
 {"fault":"$1","injected_at":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","description":"$2"}
 EOF
+  # Ground truth for grading only. The builder agent must never read this file;
+  # restrict to owner read/write so casual/accidental access is denied and the
+  # verifier can confirm non-access from the session log. (BRIEF §6, RUBRIC §A)
+  chmod 600 "$ROOT/lab/state/fault.json"
 }
 
 restart_epp() {
@@ -47,5 +51,6 @@ case "$FAULT" in
     ;;
 esac
 
+# Confirm the action only. Never echo fault.json — its `description` field is the
+# ground-truth answer key and must not leak into any session log. (BRIEF §6, RUBRIC §A)
 echo "injected: $FAULT"
-cat "$ROOT/lab/state/fault.json"
