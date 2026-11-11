@@ -136,6 +136,50 @@ healthy baseline: queues ~0, hit rate ~0.72, P95 e2e ~8.1 s, P95 TTFT ~1.9 s:
 - **S3:** hit rate 0.72 → 0.48; kv churn on all backends; queues balanced ~0;
   no error spike. Three mutually distinguishable signatures.
 
+## s4 (designed, not yet drilled)
+
+**Design:** a hot tenant under load-blind prefix routing. `make inject
+FAULT=s4` does two things:
+
+- applies `faults/s4-epp-config.yaml`: queue scorer 0, KV-cache scorer 0,
+  prefix scorer 3, so only prefix affinity picks the backend
+- sets `ZIPF_S=2` on the loadgen deployment (this restarts the loadgen). The
+  hottest tenant goes from about 22% of all requests to about 45%, above one
+  backend's fair share of 33%.
+
+Failure 7 found that weights of 0 alone do not pile up queues with 12 tenants
+at the default skew. The extra skew is what makes one tenant too big for its
+home backend. `make reset` restores the healthy config and removes `ZIPF_S`.
+
+**Why it should be distinguishable** (expected, to confirm in the drill):
+
+- s1: the other backends go to 0 req/s. In s4 they keep serving.
+- s2: server errors on one backend with queues near 0. In s4 the queue grows
+  and the only errors are client timeouts (30 s) against the hot backend.
+- s3: the hit rate collapses. In s4 it holds or rises.
+
+**Simulator prediction** (a stand-in for the GIE router written from memory,
+run with this lab's parameters; a hypothesis, not a measurement): at Zipf 2.0
+with these weights one replica took 56% to 57% of requests in 3 of 3 seeds,
+its backlog grew by 0.39 to 0.53 req/s, and the hit rate rose to about 0.82.
+At Zipf 1.0 the same weights piled up in only some seeds. The loadgen is
+closed-loop (at most 96 in flight, 30 s timeout), so expect the hot backend's
+queue to cap and the excess to show as client timeouts in the loadgen log.
+
+**Drill to run:**
+
+1. `make up && make load`, wait 4 minutes, `./scripts/check-metrics.sh`.
+2. `make inject FAULT=s4`. Within about 3 minutes: per-backend throughput
+   skewed to one backend with the others above 0 req/s, that backend's queue
+   growing, pool hit rate not falling.
+3. `make reset`. Baseline back within about 3 minutes.
+4. `make inject FAULT=s1`, then `make reset`, to confirm nothing regressed.
+
+Optional negative control (not part of s4): on a healthy lab,
+`kubectl --context kind-inference-lab -n inference-lab set env deploy/loadgen ZIPF_S=2`.
+The stand-in stayed healthy there (max backend share 34% to 35%). `make reset`
+removes the override.
+
 ## GATE 7 — Tunnel rehearsal (done early, independent of the cluster)
 
 - `cloudflared tunnel --url http://localhost:<port>` produces a quick tunnel URL
