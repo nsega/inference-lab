@@ -45,8 +45,31 @@ _BASE_SYSTEM = (
     "you cannot observe, and (10) end every answer with a one-line summary. "
 )
 TENANT_SYSTEMS = [_BASE_SYSTEM.format(t=t) * 6 for t in range(N_TENANTS)]
-# Zipf-ish popularity: tenant 0 most popular
-TENANT_WEIGHTS = [1.0 / (k + 1) for k in range(N_TENANTS)]
+
+
+def parse_zipf_s(raw: str) -> float:
+    """Parse the tenant Zipf exponent; raise ValueError on a bad value."""
+    try:
+        s = float(raw)
+    except ValueError:
+        s = math.nan
+    if not math.isfinite(s) or s < 0:
+        raise ValueError(f"ZIPF_S must be a finite number >= 0, got {raw!r}")
+    return s
+
+
+def tenant_weights(n: int, s: float) -> list:
+    """Zipf popularity weights: tenant 0 most popular, exponent s."""
+    return [1.0 / (k + 1) ** s for k in range(n)]
+
+
+# Zipf exponent of tenant popularity. 1 is the default skew; larger values
+# concentrate the shared-prefix traffic on the first tenants.
+try:
+    ZIPF_S = parse_zipf_s(os.environ.get("ZIPF_S", "1"))
+except ValueError as e:
+    sys.exit(f"[loadgen] {e}")
+TENANT_WEIGHTS = tenant_weights(N_TENANTS, ZIPF_S)
 
 WORDS = (
     "latency throughput queue cache prefix tokens routing envoy scheduler "
