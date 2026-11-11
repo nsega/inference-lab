@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Inject one of the three reproducible fault scenarios.
-# Usage: scripts/inject.sh s1|s2|s3   (or via `make inject FAULT=s1`)
+# Inject one of the four reproducible fault scenarios.
+# Usage: scripts/inject.sh s1|s2|s3|s4   (or via `make inject FAULT=s1`)
 set -euo pipefail
 
 NS=inference-lab
 KCTL="kubectl --context kind-inference-lab -n $NS"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-FAULT="${1:?usage: inject.sh s1|s2|s3}"
+FAULT="${1:?usage: inject.sh s1|s2|s3|s4}"
 
 write_state() {
   mkdir -p "$ROOT/lab/state"
@@ -45,8 +45,24 @@ case "$FAULT" in
     restart_epp
     write_state s3 "prefix-cache routing disabled: prefix-cache-aware scorer removed from EPP scheduler config"
     ;;
+  s4)
+    # s4 changes the traffic too, so the load generator must already exist.
+    # Checked first so a missing loadgen cannot leave the fault half applied.
+    $KCTL get deploy/loadgen >/dev/null 2>&1 || {
+      echo "s4 needs the load generator: run 'make load' first" >&2
+      exit 1
+    }
+    $KCTL create configmap epp-config \
+      --from-file=config.yaml="$ROOT/faults/s4-epp-config.yaml" \
+      --dry-run=client -o yaml | $KCTL apply -f -
+    restart_epp
+    # Changing the env edits the pod template, so this restarts the loadgen.
+    $KCTL set env deploy/loadgen ZIPF_S=2
+    $KCTL rollout status deploy/loadgen --timeout=120s
+    write_state s4 "hot tenant under load-blind prefix routing: queue-depth and kv-cache scorer weights zeroed in EPP scheduler config (prefix scorer kept) while loadgen tenant skew is raised to ZIPF_S=2"
+    ;;
   *)
-    echo "unknown fault: $FAULT (expected s1|s2|s3)" >&2
+    echo "unknown fault: $FAULT (expected s1|s2|s3|s4)" >&2
     exit 1
     ;;
 esac
