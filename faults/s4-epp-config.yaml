@@ -1,0 +1,37 @@
+# FAULT S4: hot tenant under load-blind prefix routing.
+# The queue-depth and kv-cache scorers are zeroed, so only prefix affinity
+# picks the backend. scripts/inject.sh also raises the loadgen tenant skew
+# (ZIPF_S=2): one tenant then outweighs a backend's fair share, and prefix
+# stickiness holds it on one backend while the others keep serving.
+apiVersion: inference.networking.x-k8s.io/v1alpha1
+kind: EndpointPickerConfig
+plugins:
+  - type: queue-scorer
+  - type: kv-cache-utilization-scorer
+  - type: prefix-cache-scorer
+    parameters:
+      maxPrefixBlocksToMatch: 256
+      lruCapacityPerServer: 31250
+  - type: max-score-picker
+  - type: single-profile-handler
+  - type: metrics-data-source
+    parameters:
+      scheme: "http"
+      path: "/metrics"
+      insecureSkipVerify: true
+  - type: core-metrics-extractor
+schedulingProfiles:
+  - name: default
+    plugins:
+      - pluginRef: queue-scorer
+        weight: 0
+      - pluginRef: kv-cache-utilization-scorer
+        weight: 0
+      - pluginRef: prefix-cache-scorer
+        weight: 3
+      - pluginRef: max-score-picker
+dataLayer:
+  sources:
+    - pluginRef: metrics-data-source
+      extractors:
+        - pluginRef: core-metrics-extractor

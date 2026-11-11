@@ -21,5 +21,13 @@ $KCTL rollout status deploy/backend-0 deploy/backend-1 deploy/backend-2 --timeou
   done
 }
 
+# Default loadgen tenant skew (undoes the s4 ZIPF_S override). Removing a
+# variable that is not set leaves the pod template alone, so the loadgen is
+# restarted only after s4. Skipped when the loadgen is not deployed.
+if $KCTL get deploy/loadgen >/dev/null 2>&1; then
+  $KCTL set env deploy/loadgen ZIPF_S-
+  $KCTL rollout status deploy/loadgen --timeout=120s
+fi
+
 rm -f "$ROOT/lab/state/fault.json"
 echo "reset: healthy config restored, fault state cleared"
