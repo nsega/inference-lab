@@ -58,9 +58,9 @@ load:
 load-stop:
 	$(KCTL) delete deploy/loadgen --ignore-not-found
 
-## inject: make inject FAULT=s1|s2|s3
+## inject: make inject FAULT=s1|s2|s3|s4
 inject:
-	@test -n "$(FAULT)" || (echo "usage: make inject FAULT=s1|s2|s3" && exit 1)
+	@test -n "$(FAULT)" || (echo "usage: make inject FAULT=s1|s2|s3|s4" && exit 1)
 	./scripts/inject.sh $(FAULT)
 
 ## reset: restore healthy configuration and clear ground-truth state

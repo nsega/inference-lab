@@ -2,7 +2,7 @@
 
 A one-command local lab that boots an **LLM inference gateway** on
 [kind](https://kind.sigs.k8s.io/), generates realistic traffic, exposes
-Prometheus metrics, and can inject three reproducible routing/serving fault
+Prometheus metrics, and can inject four reproducible routing/serving fault
 scenarios.
 
 It exists as the *target environment* for a diagnosis agent (RouteCause, built
@@ -44,7 +44,7 @@ make smoke   # one OpenAI-style completion through the gateway
 # wait ~4 minutes for caches/metrics to settle, then:
 ./scripts/check-metrics.sh   # prints the four key series
 
-make inject FAULT=s1   # or s2, s3
+make inject FAULT=s1   # or s2, s3, s4
 make reset             # back to healthy
 make down              # delete everything
 ```
@@ -103,6 +103,7 @@ health. Symptoms appear within ~3 minutes and are mutually distinguishable:
 | `s1` | Queue depth piles onto **one** backend (others idle, ~0 rps); P95 e2e breaches the SLO; prefix hit rate roughly unchanged |
 | `s2` | A **fraction** of requests slow and erroring, attributable to one backend (its success-rate drops, its latency histogram shifts); pool queues stay near zero |
 | `s3` | Pool-wide **prefix-cache hit rate collapses** (~0.72 → ~0.45); KV-cache churn rises on all backends; latency degrades under the same load; queues stay balanced |
+| `s4` | Queue depth and latency climb on **one** backend while the others **keep serving**; prefix hit rate holds or rises; errors are only client timeouts against that backend (expected signature, not yet drilled) |
 
 What each fault actually changes is deliberately not documented here — that is
 the diagnosis exercise. (Spoilers live in the `faults/` directory; don't read
@@ -121,9 +122,9 @@ cloudflared tunnel --url http://localhost:30080
 
 ```
 manifests/   kind config, backends, gateway (EPP+Envoy), prometheus, loadgen
-faults/      the three fault variants applied by scripts/inject.sh
+faults/      the four fault variants applied by scripts/inject.sh
 scripts/     inject.sh, reset.sh, check-metrics.sh
-load/        loadgen.py (stdlib-only, runs in-cluster)
+load/        loadgen.py (stdlib-only, runs in-cluster) and its unit tests
 lab/state/   fault.json ground truth (created on inject, cleared on reset)
 NOTES.md     every failure hit while building this, and the rule derived
 ```
