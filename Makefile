@@ -6,7 +6,7 @@ PROM_URL := http://localhost:30090
 
 IMAGES := \
 	ghcr.io/llm-d/llm-d-inference-sim:v0.9.2 \
-	ghcr.io/llm-d/llm-d-inference-scheduler:v0.8.0 \
+	ghcr.io/llm-d/llm-d-router-endpoint-picker:v0.9.0 \
 	envoyproxy/envoy:distroless-v1.33.2 \
 	prom/prometheus:v3.4.1 \
 	python:3.12-alpine

@@ -14,16 +14,17 @@ diagnosis logic of its own**.
               │  gateway pod                                                     │
  curl /       │  ┌───────────────────────────┐      ┌──────────┐                 │
  loadgen ───► │  │ Envoy ── ext_proc ── EPP  │ ───► │ backend-0 │  llm-d         │
- :30080       │  │ (llm-d inference          │      │ backend-1 │  inference-sim │
-              │  │  scheduler / GIE)         │      │ backend-2 │  (vLLM sim)    │
+ :30080       │  │ (llm-d-router endpoint    │      │ backend-1 │  inference-sim │
+              │  │  picker)                  │      │ backend-2 │  (vLLM sim)    │
               │  └───────────────────────────┘      └──────────┘                 │
               │        Prometheus :30090  ◄── scrapes backends + EPP             │
               └──────────────────────────────────────────────────────────────────┘
 ```
 
-- **Router**: [llm-d-inference-scheduler](https://github.com/llm-d/llm-d-inference-scheduler)
-  v0.8.0 (the Gateway API Inference Extension endpoint picker) with a
-  self-managed Envoy sidecar — no full Gateway implementation needed.
+- **Router**: [llm-d-router](https://github.com/llm-d/llm-d-router) v0.9.0,
+  image `ghcr.io/llm-d/llm-d-router-endpoint-picker:v0.9.0` (the endpoint
+  picker, formerly llm-d-inference-scheduler) with a self-managed Envoy
+  sidecar. No full Gateway implementation needed.
 - **Backends**: 3 × [llm-d-inference-sim](https://github.com/llm-d/llm-d-inference-sim)
   v0.9.2 — a vLLM simulator with a real KV/prefix cache model and real
   `vllm:*` Prometheus metrics. No GPU required; runs on Apple Silicon (arm64).

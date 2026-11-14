@@ -1,18 +1,26 @@
 # HEALTHY EPP scheduler configuration (EndpointPickerConfig).
 # Loaded into the `epp-config` ConfigMap by `make up` / `make reset`.
 #
-# NOTE (GIE v1.5.0): the dataLayer section is REQUIRED. Without it the loader
-# logs "No data sources configured; metrics collection is disabled" and the
-# queue / kv-cache scorers silently score every endpoint as zero.
-apiVersion: inference.networking.x-k8s.io/v1alpha1
+# Schema: llm-d-router v0.9.0. Plugin parameters are decoded strictly, so an
+# unknown parameter stops the router at startup.
+#
+# NOTE: the dataLayer section is kept explicit. v0.9.0 adds this same metrics
+# source and extractor by default when the section is missing; v0.8.0 did not,
+# and the queue / kv-cache scorers then silently scored every endpoint as zero.
+apiVersion: llm-d.ai/v1alpha1
 kind: EndpointPickerConfig
 plugins:
   - type: queue-scorer
   - type: kv-cache-utilization-scorer
-  - type: prefix-cache-scorer
+  # Builds the per-endpoint prefix match data that prefix-cache-scorer reads.
+  # In v0.8.0 these parameters sat on prefix-cache-scorer itself.
+  # maxPrefixBlocksToMatch is only a fallback now: the default
+  # maxPrefixTokensToMatch (131072) takes precedence.
+  - type: approx-prefix-cache-producer
     parameters:
       maxPrefixBlocksToMatch: 256
       lruCapacityPerServer: 31250
+  - type: prefix-cache-scorer
   - type: max-score-picker
   - type: single-profile-handler
   - type: metrics-data-source

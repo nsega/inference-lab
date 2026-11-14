@@ -2,15 +2,19 @@
 # The queue-depth scorer weight is INVERTED (negative) and the kv-cache scorer
 # zeroed: the scheduler now prefers the most-loaded backend, a positive
 # feedback loop that piles the queue onto one backend while the others idle.
-apiVersion: inference.networking.x-k8s.io/v1alpha1
+#
+# Same structure as manifests/epp-config.yaml (llm-d-router v0.9.0 schema);
+# only the two weights differ.
+apiVersion: llm-d.ai/v1alpha1
 kind: EndpointPickerConfig
 plugins:
   - type: queue-scorer
   - type: kv-cache-utilization-scorer
-  - type: prefix-cache-scorer
+  - type: approx-prefix-cache-producer
     parameters:
       maxPrefixBlocksToMatch: 256
       lruCapacityPerServer: 31250
+  - type: prefix-cache-scorer
   - type: max-score-picker
   - type: single-profile-handler
   - type: metrics-data-source
