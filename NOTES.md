@@ -166,6 +166,10 @@ At Zipf 1.0 the same weights piled up in only some seeds. The loadgen is
 closed-loop (at most 96 in flight, 30 s timeout), so expect the hot backend's
 queue to cap and the excess to show as client timeouts in the loadgen log.
 
+This prediction was made against the v0.8.0 router. The lab now runs
+llm-d-router v0.9.0 (see the last section), and `faults/s4-epp-config.yaml`
+is ported to its schema, so the drill numbers must be taken on v0.9.0.
+
 **Drill to run:**
 
 1. `make up && make load`, wait 4 minutes, `./scripts/check-metrics.sh`.

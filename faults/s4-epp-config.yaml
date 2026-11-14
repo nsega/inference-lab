@@ -3,15 +3,19 @@
 # picks the backend. scripts/inject.sh also raises the loadgen tenant skew
 # (ZIPF_S=2): one tenant then outweighs a backend's fair share, and prefix
 # stickiness holds it on one backend while the others keep serving.
-apiVersion: inference.networking.x-k8s.io/v1alpha1
+#
+# Same structure as manifests/epp-config.yaml (llm-d-router v0.9.0 schema);
+# only the two weights differ.
+apiVersion: llm-d.ai/v1alpha1
 kind: EndpointPickerConfig
 plugins:
   - type: queue-scorer
   - type: kv-cache-utilization-scorer
-  - type: prefix-cache-scorer
+  - type: approx-prefix-cache-producer
     parameters:
       maxPrefixBlocksToMatch: 256
       lruCapacityPerServer: 31250
+  - type: prefix-cache-scorer
   - type: max-score-picker
   - type: single-profile-handler
   - type: metrics-data-source
