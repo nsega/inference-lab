@@ -2,7 +2,10 @@
 # The prefix-cache-aware scorer is removed from the scheduling profile, so
 # requests sharing a system prompt are spread by load alone and the
 # backend prefix-cache hit rate collapses; TTFT degrades under the same load.
-apiVersion: inference.networking.x-k8s.io/v1alpha1
+#
+# llm-d-router v0.9.0 schema. The approx-prefix-cache-producer that feeds the
+# scorer is left out too: nothing else reads its data.
+apiVersion: llm-d.ai/v1alpha1
 kind: EndpointPickerConfig
 plugins:
   - type: queue-scorer

@@ -4,10 +4,10 @@
 # consumed by an ORIGINAL_DST cluster.
 #
 # Pod discovery uses InferencePool CRD mode. Selector standalone mode
-# (--endpoint-selector) is broken in GIE v1.5.0 (the version inside
-# llm-d-inference-scheduler v0.8.0): setupDatastore receives the empty
-# --pool-name instead of the POD_NAME-derived name and exits with
-# "name must not be empty". Fixed upstream on main, not in any release.
+# (--endpoint-selector) was broken in llm-d-inference-scheduler v0.8.0 and is
+# fixed in llm-d-router v0.9.0 (see NOTES.md). The lab stays on the
+# InferencePool, which v0.9.0 still reads as inference.networking.k8s.io/v1
+# from Gateway API Inference Extension v1.5.0.
 ---
 apiVersion: inference.networking.k8s.io/v1
 kind: InferencePool
@@ -192,7 +192,7 @@ spec:
       serviceAccountName: epp
       containers:
         - name: epp
-          image: ghcr.io/llm-d/llm-d-inference-scheduler:v0.8.0
+          image: ghcr.io/llm-d/llm-d-router-endpoint-picker:v0.9.0
           imagePullPolicy: IfNotPresent
           args:
             - --pool-name=vllm-sim-pool
@@ -202,11 +202,14 @@ spec:
             - --metrics-port=9090
             - --secure-serving=false
             - --metrics-endpoint-auth=false
+            # v0.9.0 traces by default and, with no OTLP collector set, prints
+            # sampled spans to stdout. The lab has no collector.
+            - --tracing=false
             - --config-file=/etc/epp/config.yaml
             - --zap-encoder=json
             - --v=3
           env:
-            # standalone selector mode derives the owning Deployment from POD_NAME
+            # only read in standalone selector mode; unused with --pool-name
             - name: POD_NAME
               valueFrom: {fieldRef: {fieldPath: metadata.name}}
             - name: NAMESPACE
