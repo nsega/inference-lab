@@ -165,3 +165,57 @@ kind load image-archive f.tar` instead. Encoded in the Makefile `up` target.
 **EPP 60s-uptime note:** the EPP binary runs natively on arm64 (verified `--help` exits 0,
 no exec-format/qemu involved), but it requires a kube API server to start fully, so its
 60s-uptime check is performed in-cluster at GATE 2 instead of in plain docker.
+
+## Router moved to llm-d-router v0.9.0 (2026-11)
+
+**Failure:** `make up` left the EPP pod in `ImagePullBackOff`. The project was
+renamed from llm-d-inference-scheduler to llm-d-router and
+`ghcr.io/llm-d/llm-d-inference-scheduler:v0.8.0` is gone from the registry.
+**Rule:** the router image is now
+`ghcr.io/llm-d/llm-d-router-endpoint-picker:v0.9.0`, the smallest step from
+v0.8.0. Everything above this section describes v0.8.0 as it was at the time.
+
+Changes below were read from the llm-d-router source (`v0.8.0..v0.9.0`). They
+have not been run on a cluster from this branch yet: repeat the GATE 5 drill
+before relying on the numbers above.
+
+What changed in the lab, and why:
+
+- **Image** (`manifests/epp.yaml`, `Makefile`): new name and tag. In v0.9.0
+  the endpoint picker code lives in the llm-d-router repo itself instead of
+  being imported from Gateway API Inference Extension (GIE).
+- **Config `apiVersion`**: `inference.networking.x-k8s.io/v1alpha1` became
+  `llm-d.ai/v1alpha1`. v0.9.0 still loads the old one with a deprecation log.
+- **Prefix plugins**: v0.9.0 decodes plugin parameters strictly, and
+  `prefix-cache-scorer` no longer takes `maxPrefixBlocksToMatch` or
+  `lruCapacityPerServer`. Left as they were, the router would refuse to start.
+  Both parameters moved to a new plugin, `approx-prefix-cache-producer`, which
+  builds the match data the scorer reads. The healthy and S1 configs declare
+  it; S3 drops it together with the scorer.
+- **Prefix hashing is coarser**: the producer hashes blocks of at least 64
+  tokens (about 256 bytes of prompt), counted by a built-in byte estimate, so
+  no tokenizer sidecar is needed. Each ~660-token tenant prompt is about 10
+  blocks. `maxPrefixBlocksToMatch: 256` is now only a fallback, because the
+  default `maxPrefixTokensToMatch` (131072) takes precedence.
+- **Scorer weights**: unchanged. Negative and zero weights are still accepted
+  (score clamped to 0..1, then multiplied by the weight), so S1 keeps
+  `queue-scorer: -2`.
+- **`dataLayer`**: kept explicit, with the same plugin names. v0.9.0 now adds
+  the default metrics source and extractor when the section is missing, so the
+  "scorers silently score 0" trap from v0.8.0 is closed.
+- **Flags**: every flag the lab passes still exists with the same meaning. One
+  was added, `--tracing=false`: v0.9.0 traces by default and, with no OTLP
+  collector configured, prints sampled spans to stdout.
+- **CRDs**: not changed and not renamed. v0.9.0 is still built against GIE
+  v1.5.0 and reads the InferencePool as `inference.networking.k8s.io/v1`.
+  v0.9.0 also ships its own `llm-d.ai` InferenceObjective and
+  InferenceModelRewrite CRDs. The lab creates neither kind, and v0.9.0 still
+  accepts the `inference.networking.x-k8s.io` ones already in
+  `manifests/crds/gie-crds-v1.5.0.yaml`, so RBAC is unchanged too.
+- **Ports, env vars, Envoy**: unchanged (9002 ext_proc, 9003 health, 9090
+  metrics, `x-gateway-destination-endpoint`).
+
+**Selector-mode bug (Failure 3):** fixed in v0.9.0. `setupDatastore` now gets
+the POD_NAME-derived name, so `--endpoint-selector` no longer exits with
+`name must not be empty`. The lab stays on InferencePool mode anyway, to keep
+this move small.
